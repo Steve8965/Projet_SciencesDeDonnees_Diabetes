@@ -1,0 +1,358 @@
+---
+title: "SCI 1402_Projet en Sciences de données"
+output: html_document
+date: "2025-12-01"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#### Nom, prénom: "Ngayap Tchouamdjou Orly Steve"
+
+### 2. Description du jeu de données et préparation
+#### 2.1. Importation du jeu de données
+
+```{r}
+#Chargement de bibliothèque
+library(caret)
+```
+
+```{r}
+#Importation des données
+diabetes <- read.csv("diabetes_prediction_dataset.csv")
+
+#Dimensions du jeu de données
+dim(diabetes)
+
+#Noms des variables
+names(diabetes)
+
+#Structure des variables
+str(diabetes)
+
+#Aperçu des premières lignes
+head(diabetes)
+```
+
+#### 2.3. Vérification des données manquantes et des doublons et suppression si trouvé
+
+```{r}
+#Valeurs manquantes par variable
+na_par_colonne <- colSums(is.na(diabetes))
+na_par_colonne
+
+#Nombre total de valeurs manquantes
+na_total <- sum(is.na(diabetes))
+na_total
+
+#Nombre de doublons exacts
+nb_doublons <- sum(duplicated(diabetes))
+nb_doublons
+```
+
+```{r}
+#Suppression des doublons
+diabetes_clean <- diabetes[!duplicated(diabetes), ]
+
+#Vérification de la nouvelle dimension
+dim(diabetes_clean)
+
+#Vérification que tous les doublons ont été retirés
+sum(duplicated(diabetes_clean))
+```
+
+#### 2.3. Conversion des variables
+
+```{r}
+#Conversion des variables catégorielles et binaires
+diabetes_clean$gender <- as.factor(diabetes_clean$gender)
+diabetes_clean$hypertension <- as.factor(diabetes_clean$hypertension)
+diabetes_clean$heart_disease <- as.factor(diabetes_clean$heart_disease)
+diabetes_clean$smoking_history <- as.factor(diabetes_clean$smoking_history)
+diabetes_clean$diabetes <- as.factor(diabetes_clean$diabetes)
+
+#Vérification de la structure après conversion
+str(diabetes_clean)
+
+#Exportation du nouveau fichier sur mon espace de travail desktop
+write.csv(diabetes_clean, file = "C:/Users/Dell/OneDrive/Desktop/diabetes_clean.csv", row.names = FALSE)
+```
+
+### 3. Analyse exploratoire
+#### 3.1. Distribution de la variable cible diabetes
+
+```{r}
+#Table de fréquence de la variable cible
+table_diabetes <- table(diabetes_clean$diabetes)
+table_diabetes
+
+#Proportions de chaque classe
+prop_diabetes <- prop.table(table_diabetes)
+prop_diabetes
+
+#Graphique en barre pour visualiser la distribution
+barplot(table_diabetes,
+        main = "Répartition de la variable cible (diabetes)",
+        xlab = "Classe (0 = non diabétique, 1 = diabétique)",
+        ylab = "Fréquence",
+        ylim = c(0, 100000),
+        col = c("lightblue", "salmon"))
+```
+
+#### 3.2. Statistiques descriptives
+
+```{r}
+#Sélection des variables numériques
+variables_numeriques <- c("age", "bmi", "HbA1c_level", "blood_glucose_level")
+
+#Résumé Statistiques des variables numériques
+summary(diabetes_clean[, variables_numeriques])
+```
+
+#### 3.3. Comparaison des moyennes par classe
+
+```{r}
+#Moyenne des variables numériques pour chaque classe de diabète
+moyennes_par_classe <- aggregate(
+  cbind(age, bmi, HbA1c_level, blood_glucose_level) ~ diabetes,
+  data = diabetes_clean,
+  FUN = mean)
+moyennes_par_classe
+
+#Visualisation des distribtions par classe
+par(mfrow=c(2,2))  #Configuration de l'affichage
+
+boxplot(age ~ diabetes, data = diabetes_clean,
+        main = "Âge selon la présence du diabète",
+        xlab = "Diabetes (0 = non, 1 = oui)",
+        ylab = "Âge",
+        col = c("lightblue", "salmon"))
+
+boxplot(bmi ~ diabetes, data = diabetes_clean,
+        main = "IMC selon la présence de diabète",
+        xlab = "Diabetes (0 = non, 1 = oui)",
+        ylab = "IMC",
+        col  = c("lightblue", "salmon"))
+
+boxplot(HbA1c_level ~ diabetes, data = diabetes_clean,
+        main = "HbA1c selon la présence de diabète",
+        xlab = "Diabetes (0 = non, 1 = oui)",
+        ylab = "HbA1c",
+        col  = c("lightblue", "salmon"))
+
+boxplot(blood_glucose_level ~ diabetes, data = diabetes_clean,
+        main = "Glucose sanguin selon la présence de diabète",
+        xlab = "Diabetes (0 = non, 1 = oui)",
+        ylab = "Niveau de glucose",
+        col  = c("lightblue", "salmon"))
+
+#On revient à la configuration initiale
+par(mfrow = c(1,1))
+```
+
+#### 3.4. Hypertension et maladies cardiaques selon diabetes
+
+```{r}
+#Conversion en numérique
+diabetes_clean$hypertension <- as.numeric(as.character(diabetes_clean$hypertension))
+diabetes_clean$heart_disease <- as.numeric(as.character(diabetes_clean$heart_disease))
+
+#Calcul des proportions
+moyennes_risques <- aggregate(
+  cbind(hypertension, heart_disease) ~ diabetes,
+  data = diabetes_clean, FUN =mean)
+moyennes_risques
+```
+
+### 4. Première stratégie de modélisation
+#### 4.1. Constitution du jeu d'apprentissage
+
+```{r}
+#Reconversion de diabetes en facteur
+diabetes_clean$diabetes <- as.factor(diabetes_clean$diabetes)
+
+#Repartition des données
+set.seed(123)  #Pour reproductibilité
+
+indices_train <- createDataPartition(diabetes_clean$diabetes, p = 0.7, list = FALSE)
+
+#Jeu d'apprentissage
+train_set <- diabetes_clean[indices_train, ]
+
+#Jeu de test
+test_set <- diabetes_clean[-indices_train, ]
+
+#Vérification des distributions
+table(train_set$diabetes)
+prop.table(table(train_set$diabetes))
+
+table(test_set$diabetes)
+prop.table(table(test_set$diabetes))
+```
+
+#### 4.2. Modèle de regression logistique
+
+```{r}
+#Chargement de bibliothèque
+library(pROC)
+
+#Ajustement du modèle de régression logistique
+modele_logistique <- glm(diabetes ~., data = train_set, family = binomial)
+
+#Résumé du modèle
+summary(modele_logistique)
+
+#Prédictions de probabilité sur le jeu de test
+probabilites_test <- predict(modele_logistique, newdata = test_set, type = "response")
+
+#Transformations des probabilités en classe prédictes
+classes_predites <- ifelse(probabilites_test >= 0.5, "1", "0")
+classes_predites <- factor(classes_predites, levels = levels(test_set$diabetes))
+
+#Matrice de confusion et mesure de performance
+performance_logistique <- confusionMatrix(classes_predites, test_set$diabetes, positive = "1")
+performance_logistique
+
+#AUC
+auc_logistique <- roc(test_set$diabetes, probabilites_test)$auc
+auc_logistique
+```
+
+### 5. Modèles avancés
+
+#### 5.1. Modèle KNN
+
+```{r}
+#Chargement des bibliothèques
+library(class)
+library(pROC)
+
+#Choix du meilleur k (validation croisée)
+controle_validation <- trainControl(method = "cv", number = 5)
+
+#Entrainement du modèle pour trouver le meilleur k
+set.seed(123)
+modele_knn <- train(diabetes ~., data = train_set, method = "knn", trControl = controle_validation, tuneLength = 5)
+modele_knn
+
+#Prédiction sur les données de test
+predictions_knn <- predict(modele_knn, newdata = test_set)
+  
+#Matrice de confusion
+matrice_confusion_knn <- confusionMatrix(predictions_knn, test_set$diabetes, positive ="1")
+matrice_confusion_knn
+
+#AUC
+probabilites_knn <- predict(modele_knn, test_set, type = "prob")
+auc_knn <- roc(test_set$diabetes, probabilites_knn[, "1"])$auc
+auc_knn
+
+```
+
+#### 5.2. Modèle Random Forest
+
+```{r}
+#Paramètres de validation croisée
+controle_validation <- trainControl(method = "cv", number = 5)
+
+#Entrainement du modèle
+set.seed(123)
+modele_rf <- train(diabetes ~., data = train_set, method = "rf", trControl = controle_validation,
+                   importance = TRUE, tuneLength = 3, ntree = 100)
+modele_rf
+
+#Prédictions sur les données du test
+predictions_rf <- predict(modele_rf, newdata = test_set)
+
+#Matrice de confusion
+matrice_confusion_rf <- confusionMatrix(predictions_rf, test_set$diabetes, positive = "1")
+matrice_confusion_rf
+
+#AUC
+probabilites_rf <- predict(modele_rf, test_set, type = "prob")
+auc_rf <- roc(test_set$diabetes, probabilites_rf[, "1"])$auc
+auc_rf
+```
+
+#### 5.3. Modèle SVM Linéaire
+
+```{r}
+#Paramètre de validation croisée
+controle_validation <- trainControl(method = "cv", number = 5, classProbs = TRUE)
+
+#On renomme le niveau des variables avant entrainement (exigence du modèle svm linéaire)
+train_set$diabetes <- factor(train_set$diabetes,
+                             levels = c("0", "1"),
+                             labels = c("non_diabetic", "diabetic"))
+
+test_set$diabetes <- factor(test_set$diabetes,
+                            levels = c("0", "1"),
+                            labels = c("non_diabetic", "diabetic"))
+#Entrainement du modèle
+set.seed(123)
+modele_svm_lineaire <- train(diabetes ~., data = train_set, method = "svmLinear",
+                             trControl = controle_validation, tuneLength = 3)
+modele_svm_lineaire
+
+#Prédictions sur les données du test
+predictions_svm_lineaire <- predict(modele_svm_lineaire, newdata = test_set)
+
+#Matrice de confusion
+matrice_confusion_svm_lineaire <- confusionMatrix(predictions_svm_lineaire, test_set$diabetes,
+                                                  positive = "diabetic")
+matrice_confusion_svm_lineaire
+
+#AUC
+probabilites_svm_lineaire<- predict(modele_svm_lineaire, test_set, type = "prob")
+auc_svm_lineaire <- roc(test_set$diabetes, probabilites_svm_lineaire[, "diabetic"])$auc
+auc_svm_lineaire
+```
+
+### 6. Comparaison des modèles
+
+#### 6.1. Tableau comparatif
+
+```{r}
+#Tableau comparatif des modèles
+resultats_modeles <- data.frame(
+  Modèle = c("Régression Logistique", "KNN (k = 9)", "Random Forest", "SVM Linéaire"),
+  Sensibilité = c(0.64701, 0.50511, 0.67964, 0.64112),
+  Spécificité = c(0.99019, 0.99605, 1.00000, 0.99179),
+  Balanced_Accuracy = c(0.81860, 0.75058, 0.83982, 0.81645),
+  AUC = c(0.9643, 0.9153, 0.9216, 0.9624),
+  Kappa = c(0.7189, 0.6304, 0.7946, 0.7223))
+
+#Pour meilleur affichage
+library(knitr)
+kable(resultats_modeles, digits = 3, caption = "COMPARAISON DES PERFORMANCES DES MODELES")
+```
+
+#### 6.2. Tracé des courbes ROC
+
+```{r}
+#Définition des ROC
+roc_log <- roc(test_set$diabetes, probabilites_test)
+roc_knn <- roc(test_set$diabetes, probabilites_knn[, "1"])
+roc_rf <- roc(test_set$diabetes, probabilites_rf[, "1"])
+roc_svm <- roc(test_set$diabetes, probabilites_svm_lineaire[, "diabetic"])
+
+#Tracé
+plot(roc_log, col = "blue", lwd = 2, main = "Courbes ROC comparées")
+lines(roc_knn, col = "red", lwd =2)
+lines(roc_rf, col = "darkgreen", lwd = 2)
+lines(roc_svm, col = "purple", lwd = 2)
+
+legend("bottomright",
+       legend = c("Régression Logstique","KNN", "Random Forest", "SVM Linéaire"),
+       col = c("blue", "red", "darkgreen", "purple"),
+       lwd = 4)
+```
+
+#### Sauvegarde du modèle final retenu
+
+```{r}
+saveRDS(modele_rf, file = "Modele_Final_Random_Forest.rds")
+```
+
+
